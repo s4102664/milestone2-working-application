@@ -2,11 +2,11 @@ from flask import Flask, jsonify, request
 
 try:
     from vaccine_py.services.coverage import (
-        get_filtered_data, compare_country, get_trends, ISO_TO_NAME
+        init_db, get_filtered_data, compare_country, get_trends, ISO_TO_NAME
     )
 except ImportError:
-    from services.coverage import (
-        get_filtered_data, compare_country, get_trends, ISO_TO_NAME
+    from .services.coverage import (
+        init_db, get_filtered_data, compare_country, get_trends, ISO_TO_NAME
     )
 
 app = Flask(__name__)
@@ -16,92 +16,39 @@ BOOTSTRAP = """
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <style>
 :root{
-  --bg-header:#0B1220;
-  --bg:#FFFFFF;
-  --panel:#FFFFFF;
-  --ink:#0F172A;
-  --muted:#475569;
-  --line:#E5E7EB;
-  --brand:#3B82F6;
-  --brand-ink:#FFFFFF;
-  --ok:#16A34A;
-  --bad:#DC2626;
+  --bg-header:#0B1220; --bg:#FFFFFF; --panel:#FFFFFF; --ink:#0F172A;
+  --muted:#475569; --line:#E5E7EB; --brand:#3B82F6; --brand-ink:#FFFFFF;
+  --ok:#16A34A; --bad:#DC2626;
 }
-html,body{
-  background:var(--bg);
-  color:var(--ink);
-  font:16px/1.55 system-ui,Segoe UI,Roboto,Arial,sans-serif;
-  margin:0
-}
-.navbar{background:var(--bg-header)}
+html,body{ background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,Segoe UI,Roboto,Arial,sans-serif; margin:0 }
+.navbar{background:#0E1628}
 .navbar .navbar-brand,.navbar .nav-link{color:#E5E7EB!important}
 .navbar .nav-link.active{color:#FFF!important;font-weight:700}
-.card{
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:20px;
-  box-shadow:0 6px 16px rgba(0,0,0,.06)
-}
-.form-control,.form-select{
-  background:#FFF;
-  color:var(--ink);
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:12px 14px
-}
+.card{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 6px 16px rgba(0,0,0,.06) }
+.form-control,.form-select{ background:#FFF; color:var(--ink); border:1px solid var(--line); border-radius:12px; padding:12px 14px }
 .btn{border-radius:12px;font-weight:700}
 .btn-primary{background:var(--brand);border-color:var(--brand)}
 .btn-outline-secondary{color:var(--ink);border-color:var(--line);background:#FFF}
-
-.result-box{
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:#F8FAFC;
-  padding:16px
-}
+.result-box{ border:1px solid var(--line); border-radius:14px; background:#F8FAFC; padding:16px }
 .kv{display:grid;grid-template-columns:180px 1fr;gap:8px 12px}
 .kv .k{color:var(--muted);font-weight:600}
 .kv .v{color:var(--ink)}
-
 .callout{margin-top:14px;padding:12px 14px;border-radius:12px;font-weight:600}
 .callout.good{background:#ECFDF5;border:1px solid #DCFCE7;color:#065F46}
 .callout.bad{background:#FEF2F2;border:1px solid #FEE2E2;color:#7F1D1D}
-
-.table{
-  border-collapse:collapse;
-  width:100%;
-}
-.table thead th{
-  background:#0B1220;
-  color:#FFFFFF;
-  border-color:#0B1220;
-  font-weight:600;
-}
-.table tbody td{
-  background:#1C2433;
-  color:#FFFFFF;
-}
-.table-striped>tbody>tr:nth-of-type(odd)>*{
-  background:#161E2B;
-}
-.table tbody tr:hover td{
-  background:#263144;
-  color:#FFFFFF;
-}
-.table td,.table th{
-  padding:12px 14px;
-  vertical-align:middle;
-}
-
-.card.p-3 h5{color:#0F172A;font-weight:700}
-.card.p-3 strong{color:#1E3A8A}
+.table{border-collapse:collapse;width:100%;}
+.table thead th{ background:#0B1220;color:#FFFFFF;border-color:#0B1220;font-weight:600; }
+.table tbody td{background:#1C2433;color:#FFFFFF;}
+.table-striped>tbody>tr:nth-of-type(odd)>*{background:#161E2B;}
+.table tbody tr:hover td{background:#263144;color:#FFFFFF;}
+.table td,.table th{padding:12px 14px;vertical-align:middle;}
+.badge-soft{background:#EEF2FF;color:#1E3A8A;border:1px solid #E0E7FF}
 </style>
 """
 
 def layout(page_title: str, active: str, body_html: str) -> str:
     nav = f"""
-    <nav class="navbar navbar-expand-lg navbar-dark mb-4" style="background:#0E1628">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
         <a class="navbar-brand fw-bold" href="/">Vaccine Intelligence</a>
         <span class="ms-2 text-success fw-semibold">● API is running</span>
@@ -110,9 +57,10 @@ def layout(page_title: str, active: str, body_html: str) -> str:
         </button>
         <div id="navitems" class="collapse navbar-collapse">
           <ul class="navbar-nav ms-auto">
-            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='compare' else ''}" href="/compare">Compare Country vs Global</a></li>
-            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='explorer' else ''}" href="/explorer">Filter & Sort Data</a></li>
-            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='trends' else ''}" href="/trends-ui">Trends (Multiple Countries)</a></li>
+            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='home' else ''}" href="/">Home</a></li>
+            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='compare' else ''}" href="/compare">Compare</a></li>
+            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='explorer' else ''}" href="/explorer">Filter & Sort</a></li>
+            <li class="nav-item"><a class="nav-link {'active fw-semibold' if active=='trends' else ''}" href="/trends-ui">Trends</a></li>
           </ul>
         </div>
       </div>
@@ -120,7 +68,7 @@ def layout(page_title: str, active: str, body_html: str) -> str:
     """
     footer = """
     <div class="container my-5">
-      <div class="text-secondary">Follows Nielsen heuristics: visibility, match, consistency, control, error prevention.</div>
+      <div class="text-secondary small">Follows Nielsen heuristics: visibility, match, consistency, user control, error prevention.</div>
     </div>
     """
     return f"""<!doctype html>
@@ -128,21 +76,88 @@ def layout(page_title: str, active: str, body_html: str) -> str:
 <title>{page_title}</title>{BOOTSTRAP}</head>
 <body>{nav}<main class="container mb-5">{body_html}</main>{footer}</body></html>"""
 
+# ---------------------------
+# HOME (Level 1 Big Picture)
+# ---------------------------
 @app.get("/")
 def home():
-    body = """
-    <div class="card p-4">
-      <h1 class="h3 mb-3">Home</h1>
-      <p class="mb-4">Choose what you want to do:</p>
-      <div class="d-flex gap-3 flex-wrap">
-        <a class="btn btn-primary" href="/compare">Compare Country vs Global</a>
-        <a class="btn btn-primary" href="/explorer">Filter & Sort Data</a>
-        <a class="btn btn-primary" href="/trends-ui">Trends (Multiple Countries)</a>
+    countries_snapshot = ", ".join(sorted(list(ISO_TO_NAME.keys()))[:10]) + "…"
+    body = f"""
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <div class="card p-4">
+          <h1 class="h3 mb-3">Welcome to Vaccine Intelligence</h1>
+
+          <h2 class="h5">Mission Statement</h2>
+          <div class="mb-3">
+            <p class="mb-2">
+              <strong>Why it matters:</strong> uneven childhood immunisation leaves communities at risk of
+              <em>preventable disease outbreaks</em>. Parents, clinicians, and policy teams often see fragmented data,
+              making it difficult to identify <em>who is falling behind</em> and <em>when to act</em>.
+            </p>
+            <div class="alert alert-primary" role="alert" style="border-radius:12px">
+              <strong>Social goal:</strong> make vaccination coverage <u>transparent and comparable</u> so that
+              early declines can be detected and resources targeted fairly across countries and years.
+            </div>
+            <ul class="mb-2">
+              <li><strong>Maria (Parent):</strong> checks if her country's coverage is above or below the global average.</li>
+              <li><strong>Dr. Ahmed (Clinician):</strong> filters vaccination data by year or vaccine and exports CSV for reporting.</li>
+              <li><strong>Liam (Policy Analyst):</strong> monitors multiple countries to spot early trends and inform strategy.</li>
+            </ul>
+            <p class="mb-0">
+              <strong>Intended outcome:</strong> earlier detection of ≥1 percentage point drops in coverage and faster public-health response.
+            </p>
+          </div>
+
+          <div class="small text-secondary mb-3">Developer: <strong>Lais Shamukh</strong> (s4102664)</div>
+
+          <h2 class="h5">Key Facts (dataset snapshot)</h2>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm table-dark table-striped align-middle">
+              <thead><tr><th>Fact</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Countries (ISO)</td><td>{countries_snapshot}</td></tr>
+                <tr><td>Vaccines tracked</td><td>MMR, DTP3, POL</td></tr>
+                <tr><td>Years covered</td><td>2022–2024</td></tr>
+                <tr><td>Database</td><td>SQLite demo dataset (in-app)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 class="h5">Personas & Use Cases</h2>
+          <ul class="mb-3">
+            <li><strong>Maria (Compare):</strong> checks if her country's coverage is above or below the global average.</li>
+            <li><strong>Dr. Ahmed (Filter/Sort):</strong> filters by country/vaccine/year and exports CSV for reporting.</li>
+            <li><strong>Liam (Trends):</strong> monitors multiple countries to spot year-to-year changes.</li>
+          </ul>
+
+          <h2 class="h5">Quick start</h2>
+          <ol class="mb-0">
+            <li>Open <a href="/compare">Compare</a> → enter ISO code (e.g., <code>AUS</code>) and year (e.g., <code>2024</code>).</li>
+            <li>Open <a href="/explorer">Filter & Sort</a> → run a query, change sort, export CSV.</li>
+            <li>Open <a href="/trends-ui">Trends</a> → type CSV countries (e.g., <code>AUS,NZL,GBR</code>).</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="card p-4">
+          <h2 class="h5 mb-3">Shortcuts</h2>
+          <div class="d-grid gap-2">
+            <a class="btn btn-primary" href="/compare">Compare Country vs Global</a>
+            <a class="btn btn-outline-secondary" href="/explorer">Filter & Sort Data</a>
+            <a class="btn btn-outline-secondary" href="/trends-ui">Trends (Multiple Countries)</a>
+          </div>
+          <div class="mt-3 small text-secondary">Data source: demo dataset (SQLite). ISO→name mapping shown in UI.</div>
+        </div>
       </div>
     </div>
     """
     return layout("Home — Vaccine Intelligence", "home", body)
 
+# ---------------------------
+# COMPARE
+# ---------------------------
 @app.get("/compare")
 def page_compare():
     body = """
@@ -152,11 +167,11 @@ def page_compare():
           <h2 class="h4 mb-4">Compare Country vs Global Average</h2>
           <div class="row gy-3">
             <div class="col-md-6">
-              <label>Country (ISO)</label>
+              <label class="form-label">Country (ISO)</label>
               <input id="cmp-country" value="AUS" class="form-control">
             </div>
             <div class="col-md-6">
-              <label>Year</label>
+              <label class="form-label">Year</label>
               <input id="cmp-year" type="number" value="2024" class="form-control">
             </div>
             <div class="col-12">
@@ -215,18 +230,21 @@ def page_compare():
     """
     return layout("Compare — Vaccine Intelligence", "compare", body)
 
+# ---------------------------
+# EXPLORER
+# ---------------------------
 @app.get("/explorer")
 def page_explorer():
-    iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k,v in ISO_TO_NAME.items()]) + "}"
+    iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k, v in ISO_TO_NAME.items()]) + "}"
     body = f"""
     <div class="card p-4 mb-4">
       <h2 class="h4 mb-4">Data Explorer (Filter & Sort)</h2>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
-        <div class="col-sm-3"><label>Country (ISO)</label><input id="q_country" class="form-control" value="AUS"></div>
-        <div class="col-sm-3"><label>Vaccine</label><input id="q_vaccine" class="form-control" value="MMR"></div>
-        <div class="col-sm-2"><label>Year</label><input id="q_year" class="form-control" type="number" value="2024"></div>
+        <div class="col-sm-3"><label class="form-label">Country (ISO)</label><input id="q_country" class="form-control" value="AUS"></div>
+        <div class="col-sm-3"><label class="form-label">Vaccine</label><input id="q_vaccine" class="form-control" value="MMR"></div>
+        <div class="col-sm-2"><label class="form-label">Year</label><input id="q_year" class="form-control" type="number" value="2024"></div>
         <div class="col-sm-3">
-          <label>Sort</label>
+          <label class="form-label">Sort</label>
           <select id="q_sort" class="form-select">
             <option value="coverage_desc" selected>Coverage (desc)</option>
             <option value="coverage_asc">Coverage (asc)</option>
@@ -272,7 +290,7 @@ def page_explorer():
       TBody.innerHTML = '';
       (js.rows||[]).forEach(row => {{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${{isoToName(row.country)}}</td><td>${{row.vaccine}}</td><td>${{row.year}}</td><td>${{row.coverage}}</td>`;
+        tr.innerHTML = `<td>${{isoToName(row.country)}}</td><td>${{row.vaccine}}</td><td>${{row.year}}</td><td>${{row.coverage}}%</td>`;
         TBody.appendChild(tr);
       }});
       Count.textContent = (js.rows||[]).length;
@@ -297,15 +315,18 @@ def page_explorer():
     """
     return layout("Explorer — Vaccine Intelligence", "explorer", body)
 
+# ---------------------------
+# TRENDS
+# ---------------------------
 @app.get("/trends-ui")
 def page_trends_ui():
-    iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k,v in ISO_TO_NAME.items()]) + "}"
+    iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k, v in ISO_TO_NAME.items()]) + "}"
     body = f"""
     <div class="card p-4 mb-4">
       <h2 class="h4 mb-4">Trends (Multiple Countries)</h2>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
-        <div class="col-sm-4"><label>Vaccine</label><input id="t_vaccine" class="form-control" value="MMR"></div>
-        <div class="col-sm-6"><label>Countries (CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR"></div>
+        <div class="col-sm-4"><label class="form-label">Vaccine</label><input id="t_vaccine" class="form-control" value="MMR"></div>
+        <div class="col-sm-6"><label class="form-label">Countries (CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR"></div>
         <div class="col-sm-2"><button class="btn btn-primary w-100" id="t_run">Load</button></div>
       </form>
     </div>
@@ -345,6 +366,9 @@ def page_trends_ui():
     """
     return layout("Trends — Vaccine Intelligence", "trends", body)
 
+# ---------------------------
+# API & Errors
+# ---------------------------
 @app.after_request
 def no_cache(resp):
     resp.headers["Cache-Control"] = "no-store, max-age=0"
@@ -387,7 +411,7 @@ def compare_json():
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid year parameter"}), 400
 
-    result = compare_country(code, year) 
+    result = compare_country(code, year)
     if "error" in result:
         return jsonify(result), 200
 
@@ -416,6 +440,5 @@ def server_error(e):
     return jsonify({"error": "Internal Server Error"}), 500
 
 if __name__ == "__main__":
-    from services.coverage import init_db
     init_db()
     app.run(host="127.0.0.1", port=5055, debug=False, threaded=True)

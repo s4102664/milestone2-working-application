@@ -1,13 +1,12 @@
 PRAGMA foreign_keys = ON;
 
--- 1) Таблица
 CREATE TABLE IF NOT EXISTS coverage (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     country   TEXT    NOT NULL,  
     vaccine   TEXT    NOT NULL, 
     year      INTEGER NOT NULL,
     coverage  REAL    NOT NULL CHECK(coverage >= 0 AND coverage <= 100),
-    UNIQUE(country, vaccine, year) 
+    UNIQUE(country, vaccine, year)
 );
 
 INSERT OR IGNORE INTO coverage (country, vaccine, year, coverage) VALUES
@@ -51,8 +50,22 @@ CREATE INDEX IF NOT EXISTS idx_cov_country ON coverage(country);
 CREATE INDEX IF NOT EXISTS idx_cov_vaccine ON coverage(vaccine);
 CREATE INDEX IF NOT EXISTS idx_cov_year    ON coverage(year);
 
--- CREATE VIEW IF NOT EXISTS coverage_view AS
--- SELECT country,
---        CASE WHEN vaccine='DTP3' THEN 'DTP' ELSE vaccine END AS vaccine,
---        year, coverage
--- FROM coverage;
+CREATE TABLE IF NOT EXISTS vaccine_info (
+    vaccine_code TEXT PRIMARY KEY,
+    vaccine_name TEXT NOT NULL,
+    manufacturer TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO vaccine_info (vaccine_code, vaccine_name, manufacturer) VALUES
+('MMR',  'Measles, Mumps, Rubella', 'Pfizer'),
+('POL',  'Polio',                    'Moderna'),
+('DTP3', 'Diphtheria, Tetanus, Pertussis (3rd dose)', 'GSK');
+
+CREATE VIEW IF NOT EXISTS coverage_norm AS
+SELECT
+    country,
+    CASE WHEN vaccine='DTP3' THEN 'DTP' ELSE vaccine END AS vaccine_readable,
+    vaccine AS vaccine_code,
+    year,
+    coverage
+FROM coverage;
