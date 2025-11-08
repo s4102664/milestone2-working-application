@@ -11,6 +11,8 @@ except ImportError:
 
 app = Flask(__name__)
 
+NAME_TO_ISO = {name.lower(): code for code, name in ISO_TO_NAME.items()}
+
 BOOTSTRAP = """
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -46,6 +48,7 @@ html,body{ background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,Sego
 </style>
 """
 
+
 def layout(page_title: str, active: str, body_html: str) -> str:
     nav = f"""
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
@@ -76,9 +79,7 @@ def layout(page_title: str, active: str, body_html: str) -> str:
 <title>{page_title}</title>{BOOTSTRAP}</head>
 <body>{nav}<main class="container mb-5">{body_html}</main>{footer}</body></html>"""
 
-# ---------------------------
-# HOME (Level 1 Big Picture)
-# ---------------------------
+
 @app.get("/")
 def home():
     countries_snapshot = ", ".join(sorted(list(ISO_TO_NAME.keys()))[:10]) + "…"
@@ -118,7 +119,7 @@ def home():
               <tbody>
                 <tr><td>Countries (ISO)</td><td>{countries_snapshot}</td></tr>
                 <tr><td>Vaccines tracked</td><td>MMR, DTP3, POL</td></tr>
-                <tr><td>Years covered</td><td>2022–2024</td></tr>
+                <tr><td>Years covered</td><td>2022-2024</td></tr>
                 <tr><td>Database</td><td>SQLite demo dataset (in-app)</td></tr>
               </tbody>
             </table>
@@ -133,9 +134,9 @@ def home():
 
           <h2 class="h5">Quick start</h2>
           <ol class="mb-0">
-            <li>Open <a href="/compare">Compare</a> → enter ISO code (e.g., <code>AUS</code>) and year (e.g., <code>2024</code>).</li>
-            <li>Open <a href="/explorer">Filter & Sort</a> → run a query, change sort, export CSV.</li>
-            <li>Open <a href="/trends-ui">Trends</a> → type CSV countries (e.g., <code>AUS,NZL,GBR</code>).</li>
+            <li>Open <a href="/compare">Compare</a> → enter ISO code (e.g., <code>AUS</code>) or country name and year (e.g., <code>2024</code>).</li>
+            <li>Open <a href="/explorer">Filter & Sort</a> → filter by country/vaccine/year, change sort, export CSV.</li>
+            <li>Open <a href="/trends-ui">Trends</a> → type countries as a list (e.g., <code>AUS,NZL,GBR</code>).</li>
           </ol>
         </div>
       </div>
@@ -155,19 +156,22 @@ def home():
     """
     return layout("Home — Vaccine Intelligence", "home", body)
 
-# ---------------------------
-# COMPARE
-# ---------------------------
+
 @app.get("/compare")
 def page_compare():
     body = """
     <div class="row g-4">
       <div class="col-lg-7">
         <div class="card">
-          <h2 class="h4 mb-4">Compare Country vs Global Average</h2>
+          <h2 class="h4 mb-3">Compare Country vs Global Average</h2>
+          <p class="text-muted small mb-3">
+            Use this page to <strong>check whether one country is above or below the global average</strong>
+            for childhood vaccination coverage. You can enter a <strong>3-letter ISO code</strong> (e.g. <code>AUS</code>)
+            or a <strong>full country name</strong> (e.g. <code>Australia</code>).
+          </p>
           <div class="row gy-3">
             <div class="col-md-6">
-              <label class="form-label">Country (ISO)</label>
+              <label class="form-label">Country (ISO or name)</label>
               <input id="cmp-country" value="AUS" class="form-control">
             </div>
             <div class="col-md-6">
@@ -230,17 +234,24 @@ def page_compare():
     """
     return layout("Compare — Vaccine Intelligence", "compare", body)
 
-# ---------------------------
-# EXPLORER
-# ---------------------------
+
 @app.get("/explorer")
 def page_explorer():
     iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k, v in ISO_TO_NAME.items()]) + "}"
     body = f"""
     <div class="card p-4 mb-4">
-      <h2 class="h4 mb-4">Data Explorer (Filter & Sort)</h2>
+      <h2 class="h4 mb-2">Data Explorer (Filter & Sort)</h2>
+      <p class="text-muted small mb-3">
+        Use this page to <strong>filter and sort</strong> vaccination coverage data.
+        You can search by <strong>country</strong>, <strong>vaccine</strong> and <strong>year</strong>, then sort by coverage.
+        Countries can be entered as <strong>3-letter ISO codes</strong> (e.g. <code>AUS</code>, <code>NZL</code>)
+        or as <strong>full names</strong> (e.g. <code>Australia</code>).<br>
+        To view multiple countries at once, enter a comma-separated list, for example:
+        <code>AUS, New Zealand, japan</code>. Case does not matter.
+        Leave the country field empty to show all countries for the selected filters.
+      </p>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
-        <div class="col-sm-3"><label class="form-label">Country (ISO)</label><input id="q_country" class="form-control" value="AUS"></div>
+        <div class="col-sm-3"><label class="form-label">Country (ISO or name, CSV)</label><input id="q_country" class="form-control" value="AUS"></div>
         <div class="col-sm-3"><label class="form-label">Vaccine</label><input id="q_vaccine" class="form-control" value="MMR"></div>
         <div class="col-sm-2"><label class="form-label">Year</label><input id="q_year" class="form-control" type="number" value="2024"></div>
         <div class="col-sm-3">
@@ -259,6 +270,9 @@ def page_explorer():
         <h3 class="h6 mb-0">Results</h3>
         <button class="btn btn-outline-light btn-sm" id="btn_csv">Export CSV</button>
       </div>
+
+      <div id="q_error" class="alert alert-danger py-2 px-3 mb-2 d-none small"></div>
+
       <div class="table-responsive">
         <table class="table table-sm table-dark table-striped align-middle" id="q_table">
           <thead><tr><th>Country</th><th>Vaccine</th><th>Year</th><th>Coverage (%)</th></tr></thead>
@@ -274,23 +288,45 @@ def page_explorer():
 
     const TBody = document.querySelector('#q_table tbody');
     const Count = document.getElementById('q_count');
+    const ErrorBox = document.getElementById('q_error');
 
     async function runQuery(){{
+      const rawCountry = document.getElementById('q_country').value || '';
+      // передаем как есть (в backend уже обрабатываем ISO/имена/CSV)
       const payload = {{
-        country: (document.getElementById('q_country').value || null),
+        country: rawCountry || null,
         vaccine: (document.getElementById('q_vaccine').value || null),
         year:    (document.getElementById('q_year').value || '') ? parseInt(document.getElementById('q_year').value) : null,
         sort:    document.getElementById('q_sort').value || 'coverage_desc'
       }};
+
+      ErrorBox.classList.add('d-none');
+      ErrorBox.textContent = '';
+
       const r = await fetch('/coverage/query', {{
-        method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(payload)
+        method:'POST',
+        headers:{{'Content-Type':'application/json'}},
+        body:JSON.stringify(payload)
       }});
       const js = await r.json();
 
+      if (js.error) {{
+        TBody.innerHTML = '';
+        Count.textContent = 0;
+        ErrorBox.textContent = '⚠ ' + js.error;
+        ErrorBox.classList.remove('d-none');
+        window.__lastRows = [];
+        return;
+      }}
+
       TBody.innerHTML = '';
-      (js.rows||[]).forEach(row => {{
+      (js.rows||[]).forEach(function(row) {{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${{isoToName(row.country)}}</td><td>${{row.vaccine}}</td><td>${{row.year}}</td><td>${{row.coverage}}%</td>`;
+        tr.innerHTML =
+          '<td>' + isoToName(row.country) + '</td>' +
+          '<td>' + row.vaccine + '</td>' +
+          '<td>' + row.year + '</td>' +
+          '<td>' + row.coverage + '%</td>';
         TBody.appendChild(tr);
       }});
       Count.textContent = (js.rows||[]).length;
@@ -299,14 +335,19 @@ def page_explorer():
 
     document.getElementById('q_run').addEventListener('click', runQuery);
 
-    document.getElementById('btn_csv').addEventListener('click', () => {{
+    document.getElementById('btn_csv').addEventListener('click', function() {{
       const rows = window.__lastRows || [];
       const head = ['country','vaccine','year','coverage'];
-      const all = [head].concat(rows.map(r => [r.country, r.vaccine, r.year, r.coverage]));
-      const csv = all.map(a => a.map(x => `"${{String(x).replaceAll('"','""')}}"`).join(',')).join('\\n');
+      const all = [head].concat(rows.map(function(r) {{ return [r.country, r.vaccine, r.year, r.coverage]; }}));
+      const csv = all.map(function(a) {{
+        return a.map(function(x) {{ return '"' + String(x).replaceAll('"','""') + '"'; }}).join(',');
+      }}).join('\\n');
       const blob = new Blob([csv], {{type:'text/csv'}});
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'coverage_export.csv'; a.click();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'coverage_export.csv';
+      a.click();
       URL.revokeObjectURL(url);
     }});
 
@@ -315,18 +356,22 @@ def page_explorer():
     """
     return layout("Explorer — Vaccine Intelligence", "explorer", body)
 
-# ---------------------------
-# TRENDS
-# ---------------------------
+
 @app.get("/trends-ui")
 def page_trends_ui():
     iso_map_js = "{" + ",".join([f"'{k}':'{v}'" for k, v in ISO_TO_NAME.items()]) + "}"
     body = f"""
     <div class="card p-4 mb-4">
-      <h2 class="h4 mb-4">Trends (Multiple Countries)</h2>
+      <h2 class="h4 mb-2">Trends (Multiple Countries)</h2>
+      <p class="text-muted small mb-3">
+        Use this page to <strong>compare trends across multiple countries</strong> for a single vaccine.
+        Enter one vaccine (e.g. <code>MMR</code>) and a list of countries.
+        Countries should be entered as <strong>3-letter ISO codes</strong> or full names,
+        separated by commas (e.g. <code>AUS, NZL, United States, japan</code>).
+      </p>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
         <div class="col-sm-4"><label class="form-label">Vaccine</label><input id="t_vaccine" class="form-control" value="MMR"></div>
-        <div class="col-sm-6"><label class="form-label">Countries (CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR"></div>
+        <div class="col-sm-6"><label class="form-label">Countries (ISO or names, CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR"></div>
         <div class="col-sm-2"><button class="btn btn-primary w-100" id="t_run">Load</button></div>
       </form>
     </div>
@@ -342,21 +387,23 @@ def page_trends_ui():
     async function loadTrends(){{
       const vaccine = document.getElementById('t_vaccine').value || 'MMR';
       const countries = document.getElementById('t_countries').value || 'AUS,NZL,GBR';
-      const r = await fetch(`/trends?vaccine=${{encodeURIComponent(vaccine)}}&countries=${{encodeURIComponent(countries)}}`);
+      const r = await fetch('/trends?vaccine=' + encodeURIComponent(vaccine) +
+                            '&countries=' + encodeURIComponent(countries));
       const js = await r.json();
 
       Cards.innerHTML = '';
-      (js.points||[]).forEach(p => {{
-        Cards.insertAdjacentHTML('beforeend', `
-          <div class="col-md-4">
-            <div class="card p-3">
-              <h5 class="mb-2">${{isoToName(p.country)}} (${{String(p.country||'').toUpperCase()}})</h5>
-              <div>Year: <strong>${{p.year}}</strong></div>
-              <div>Vaccine: <strong>${{p.vaccine}}</strong></div>
-              <div>Coverage: <strong>${{p.coverage}}%</strong></div>
-            </div>
-          </div>
-        `);
+      (js.points||[]).forEach(function(p) {{
+        Cards.insertAdjacentHTML('beforeend',
+          '<div class="col-md-4">' +
+            '<div class="card p-3">' +
+              '<h5 class="mb-2">' + isoToName(p.country) + ' (' +
+                String(p.country || '').toUpperCase() + ')</h5>' +
+              '<div>Year: <strong>' + p.year + '</strong></div>' +
+              '<div>Vaccine: <strong>' + p.vaccine + '</strong></div>' +
+              '<div>Coverage: <strong>' + p.coverage + '%</strong></div>' +
+            '</div>' +
+          '</div>'
+        );
       }});
     }}
 
@@ -366,17 +413,17 @@ def page_trends_ui():
     """
     return layout("Trends — Vaccine Intelligence", "trends", body)
 
-# ---------------------------
-# API & Errors
-# ---------------------------
+
 @app.after_request
 def no_cache(resp):
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
 
+
 @app.get("/health")
 def health():
     return jsonify({"ok": True, "message": "API is running", "version": "1.0.0"}), 200
+
 
 @app.route("/coverage/query", methods=["GET", "POST"])
 def query_coverage():
@@ -390,21 +437,76 @@ def query_coverage():
     else:
         data = request.get_json(silent=True) or {}
 
+    raw_country = data.get("country") or None
+    country_param = None
+
+    if raw_country:
+        tokens = [t.strip() for t in str(raw_country).split(",") if t.strip()]
+        codes = []
+        invalid = []
+
+        for token in tokens:
+            upper = token.upper()
+            code = None
+
+            if len(upper) == 3 and upper in ISO_TO_NAME:
+                code = upper
+            else:
+                code = NAME_TO_ISO.get(token.lower())
+
+            if code:
+                codes.append(code)
+            else:
+                invalid.append(token)
+
+        if invalid:
+            return jsonify({
+                "error": (
+                    "Unknown country code(s)/name(s): "
+                    + ", ".join(invalid)
+                    + ". Use 3-letter ISO codes (e.g. AUS,NZL,GBR) "
+                      "or full names (e.g. Australia)."
+                ),
+                "rows": [],
+                "count": 0,
+            }), 400
+
+        country_param = ",".join(codes)
+
     rows = get_filtered_data(
-        country=(data.get("country") or None),
+        country=country_param,
         vaccine=(data.get("vaccine") or None),
         year=data.get("year"),
         sort=data.get("sort", "coverage_desc"),
     )
     return jsonify({"count": len(rows), "rows": rows}), 200
 
+
 @app.get("/coverage/compare")
 def compare_api():
     return compare_json()
 
+
 @app.get("/compare.json")
 def compare_json():
-    code = (request.args.get("country", "AUS") or "AUS").upper()
+    raw = (request.args.get("country", "AUS") or "AUS").strip()
+    token = raw
+    upper = token.upper()
+    code = None
+
+    if len(upper) == 3 and upper in ISO_TO_NAME:
+        code = upper
+    else:
+        code = NAME_TO_ISO.get(token.lower())
+
+    if not code:
+        return jsonify({
+            "error": (
+                f"Unknown country: {raw}. "
+                "Use a 3-letter ISO code (e.g. AUS) or a full country name (e.g. Australia)."
+            )
+        }), 400
+
     vaccine = request.args.get("vaccine", "MMR") or "MMR"
     try:
         year = int(request.args.get("year", 2024))
@@ -425,19 +527,50 @@ def compare_json():
 
     return jsonify(result), 200
 
+
 @app.get("/trends")
 def trends():
     vaccine = request.args.get("vaccine", "MMR")
-    countries = [c.strip().upper() for c in request.args.get("countries", "AUS,NZL,GBR").split(",")]
-    return jsonify(get_trends(vaccine, countries)), 200
+    raw_countries = request.args.get("countries", "AUS,NZL,GBR")
+
+    tokens = [t.strip() for t in str(raw_countries).split(",") if t.strip()]
+    codes = []
+    invalid = []
+
+    for token in tokens:
+        upper = token.upper()
+        code = None
+        if len(upper) == 3 and upper in ISO_TO_NAME:
+            code = upper
+        else:
+            code = NAME_TO_ISO.get(token.lower())
+        if code:
+            codes.append(code)
+        else:
+            invalid.append(token)
+
+    if invalid:
+        return jsonify({
+            "error": (
+                "Unknown country code(s)/name(s): "
+                + ", ".join(invalid)
+                + ". Use 3-letter ISO codes or full names."
+            ),
+            "points": [],
+        }), 400
+
+    return jsonify(get_trends(vaccine, codes)), 200
+
 
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found", "path": request.path}), 404
 
+
 @app.errorhandler(500)
 def server_error(e):
     return jsonify({"error": "Internal Server Error"}), 500
+
 
 if __name__ == "__main__":
     init_db()
