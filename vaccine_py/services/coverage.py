@@ -4,12 +4,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+
 def _detect_root() -> Path:
     here = Path(__file__).resolve()
     for p in [here.parent, *here.parents]:
         if (p / "database.sql").exists() or (p / ".git").exists():
             return p
     return here.parents[2]
+
 
 ROOT: Path = _detect_root()
 DB_PATH: Path = ROOT / "database.db"
@@ -26,8 +28,45 @@ ISO_TO_NAME: Dict[str, str] = {
     "FRA": "France",
     "ITA": "Italy",
     "ESP": "Spain",
+    "NLD": "Netherlands",
+    "SWE": "Sweden",
+    "NOR": "Norway",
+    "DNK": "Denmark",
+    "IRL": "Ireland",
+    "CHE": "Switzerland",
+    "BEL": "Belgium",
+    "AUT": "Austria",
+    "PRT": "Portugal",
+    "GRC": "Greece",
+    "CHN": "China",
+    "IND": "India",
+    "KOR": "South Korea",
+    "THA": "Thailand",
+    "VNM": "Viet Nam",
+    "BRA": "Brazil",
+    "MEX": "Mexico",
+    "ARG": "Argentina",
+    "ZAF": "South Africa",
+    "TUR": "Türkiye",
 }
+
 NAME_TO_ISO: Dict[str, str] = {v.upper(): k for k, v in ISO_TO_NAME.items()}
+
+NAME_TO_ISO.update(
+    {
+        "UNITED STATES OF AMERICA": "USA",
+        "UNITED STATES": "USA",
+        "US": "USA",
+        "U.S.": "USA",
+        "UK": "GBR",
+        "U.K.": "GBR",
+        "GREAT BRITAIN": "GBR",
+        "ENGLAND": "GBR",
+        "SOUTH KOREA": "KOR",
+        "REPUBLIC OF KOREA": "KOR",
+        "VIETNAM": "VNM",
+    }
+)
 
 
 def country_name(code: str) -> str:
@@ -42,17 +81,33 @@ def resolve_country(query: Optional[str]) -> Optional[str]:
         return None
 
     up = q.upper()
+
     if up in ISO_TO_NAME:
         return up
+
     if up in NAME_TO_ISO:
         return NAME_TO_ISO[up]
+
     if len(up) == 3 and up.isalpha():
         return up
+
     return None
 
 
 def _norm_country(x: Optional[str]) -> Optional[str]:
     return resolve_country(x)
+
+
+def _norm_country_list(x: Optional[str]) -> List[str]:
+    if not x:
+        return []
+    parts = [p.strip() for p in str(x).split(",") if p.strip()]
+    codes: List[str] = []
+    for p in parts:
+        c = resolve_country(p)
+        if c and c not in codes:
+            codes.append(c)
+    return codes
 
 
 def _norm_vaccine(x: Optional[str]) -> Optional[str]:
@@ -68,7 +123,6 @@ def _norm_year(x: Any) -> Optional[int]:
 
 # ----------------------- db helpers -----------------------
 def get_connection() -> sqlite3.Connection:
-    """SQLite connection with row_factory -> dict-like rows."""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -102,25 +156,32 @@ def _select(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
         return [dict(r) for r in cur.fetchall()]
 
 
-# ----------------------- Level 2 -----------------------
+# ----------------------- Level 2: Explorer -----------------------
 def get_filtered_data(
     country: Optional[str] = None,
     vaccine: Optional[str] = None,
     year: Optional[int] = None,
     sort: str = "coverage_desc",
 ) -> List[Dict[str, Any]]:
-    c = _norm_country(country)
+    countries = _norm_country_list(country)
     v = _norm_vaccine(vaccine)
     y = _norm_year(year)
 
     where = ["1=1"]
     params: List[Any] = []
-    if c:
-        where.append("country = ?"); params.append(c)
+
+    if countries:
+        placeholders = ",".join("?" for _ in countries)
+        where.append(f"country IN ({placeholders})")
+        params.extend(countries)
+
     if v:
-        where.append("vaccine = ?"); params.append(v)
+        where.append("vaccine = ?")
+        params.append(v)
+
     if y is not None:
-        where.append("year = ?"); params.append(y)
+        where.append("year = ?")
+        params.append(y)
 
     order_sql = {
         "coverage_desc": "coverage DESC",
@@ -137,17 +198,16 @@ def get_filtered_data(
         WHERE {' AND '.join(where)}
         ORDER BY {order_sql};
     """
+
     rows = _select(sql, tuple(params))
     for r in rows:
         r["country_name"] = country_name(r["country"])
     return rows
 
 
-# ----------------------- Level 3 -----------------------
+# ----------------------- Level 3: Compare & Trends -----------------------
 def compare_country(country: str, year: Any) -> Dict[str, Any]:
-    """
-    Сравнение локального показателя со средним по миру (для того же вакцины/года).
-    """
+    """Сравнение конкретной страны с глобальным средним по одному году."""
     c = _norm_country(country)
     y = _norm_year(year)
     if not y:
@@ -180,7 +240,7 @@ def compare_country(country: str, year: Any) -> Dict[str, Any]:
         return {"error": f"No global data for vaccine {vac} in {y}"}
 
     return {
-        "country": c,       
+        "country": c,
         "country_code": c,
         "country_name": country_name(c),
         "year": y,
@@ -204,17 +264,20 @@ def get_trends(
 
     where = ["1=1"]
     params: List[Any] = []
+
     if v:
-        where.append("vaccine = ?"); params.append(v)
+        where.append("vaccine = ?")
+        params.append(v)
+
     if cs:
         placeholders = ",".join("?" for _ in cs)
-        where.append(f"country IN ({placeholders})"); params.extend(cs)
+        where.append(f"country IN ({placeholders})")
+        params.extend(cs)
 
     if latest_only:
         inner_where = " AND ".join(where)
         outer_where = (
-            inner_where
-            .replace("country", "t.country")
+            inner_where.replace("country", "t.country")
             .replace("vaccine", "t.vaccine")
             .replace("year", "t.year")
         )

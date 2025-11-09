@@ -2,11 +2,19 @@ from flask import Flask, jsonify, request
 
 try:
     from vaccine_py.services.coverage import (
-        init_db, get_filtered_data, compare_country, get_trends, ISO_TO_NAME
+        init_db,
+        get_filtered_data,
+        compare_country,
+        get_trends,
+        ISO_TO_NAME,
     )
 except ImportError:
     from .services.coverage import (
-        init_db, get_filtered_data, compare_country, get_trends, ISO_TO_NAME
+        init_db,
+        get_filtered_data,
+        compare_country,
+        get_trends,
+        ISO_TO_NAME,
     )
 
 app = Flask(__name__)
@@ -82,7 +90,7 @@ def layout(page_title: str, active: str, body_html: str) -> str:
 
 @app.get("/")
 def home():
-    countries_snapshot = ", ".join(sorted(list(ISO_TO_NAME.keys()))[:10]) + "…"
+    countries_snapshot = ", ".join(sorted(list(ISO_TO_NAME.keys()))[:12]) + "…"
     body = f"""
     <div class="row g-4">
       <div class="col-lg-7">
@@ -118,6 +126,7 @@ def home():
               <thead><tr><th>Fact</th><th>Value</th></tr></thead>
               <tbody>
                 <tr><td>Countries (ISO)</td><td>{countries_snapshot}</td></tr>
+                <tr><td>Example countries</td><td>AUS, NZL, GBR, USA, CAN, JPN, DEU, FRA, ITA, ESP, BRA, MEX…</td></tr>
                 <tr><td>Vaccines tracked</td><td>MMR, DTP3, POL</td></tr>
                 <tr><td>Years covered</td><td>2022-2024</td></tr>
                 <tr><td>Database</td><td>SQLite demo dataset (in-app)</td></tr>
@@ -134,9 +143,9 @@ def home():
 
           <h2 class="h5">Quick start</h2>
           <ol class="mb-0">
-            <li>Open <a href="/compare">Compare</a> → enter ISO code (e.g., <code>AUS</code>) or country name and year (e.g., <code>2024</code>).</li>
+            <li>Open <a href="/compare">Compare</a> → enter ISO code (e.g., <code>AUS</code>) or country name (e.g. <code>Australia</code>) and year (e.g., <code>2024</code>).</li>
             <li>Open <a href="/explorer">Filter & Sort</a> → filter by country/vaccine/year, change sort, export CSV.</li>
-            <li>Open <a href="/trends-ui">Trends</a> → type countries as a list (e.g., <code>AUS,NZL,GBR</code>).</li>
+            <li>Open <a href="/trends-ui">Trends</a> → type a list of countries (e.g., <code>AUS,NZL,GBR,USA,BRA</code>).</li>
           </ol>
         </div>
       </div>
@@ -149,7 +158,10 @@ def home():
             <a class="btn btn-outline-secondary" href="/explorer">Filter & Sort Data</a>
             <a class="btn btn-outline-secondary" href="/trends-ui">Trends (Multiple Countries)</a>
           </div>
-          <div class="mt-3 small text-secondary">Data source: demo dataset (SQLite). ISO→name mapping shown in UI.</div>
+          <div class="mt-3 small text-secondary">
+            Data source: demo dataset (SQLite). ISO→name mapping includes countries such as Australia, New Zealand,
+            United Kingdom, United States, Canada, Japan, Germany, France, Italy, Spain, Brazil, Mexico, China, India and others.
+          </div>
         </div>
       </div>
     </div>
@@ -167,7 +179,7 @@ def page_compare():
           <p class="text-muted small mb-3">
             Use this page to <strong>check whether one country is above or below the global average</strong>
             for childhood vaccination coverage. You can enter a <strong>3-letter ISO code</strong> (e.g. <code>AUS</code>)
-            or a <strong>full country name</strong> (e.g. <code>Australia</code>).
+            or a <strong>full country name</strong> (e.g. <code>Australia</code>). Case does not matter.
           </p>
           <div class="row gy-3">
             <div class="col-md-6">
@@ -244,14 +256,14 @@ def page_explorer():
       <p class="text-muted small mb-3">
         Use this page to <strong>filter and sort</strong> vaccination coverage data.
         You can search by <strong>country</strong>, <strong>vaccine</strong> and <strong>year</strong>, then sort by coverage.
-        Countries can be entered as <strong>3-letter ISO codes</strong> (e.g. <code>AUS</code>, <code>NZL</code>)
-        or as <strong>full names</strong> (e.g. <code>Australia</code>).<br>
-        To view multiple countries at once, enter a comma-separated list, for example:
-        <code>AUS, New Zealand, japan</code>. Case does not matter.
-        Leave the country field empty to show all countries for the selected filters.
+        Countries can be entered as <strong>3-letter ISO codes</strong> (e.g. <code>AUS</code>, <code>NZL</code>, <code>BRA</code>)
+        or as <strong>full names</strong> (e.g. <code>Australia</code>, <code>New Zealand</code>, <code>Brazil</code>).<br>
+        You can enter <strong>one or many countries</strong>, separated by commas. Examples:
+        <code>AUS, NZL, GBR, USA, CAN</code> or <code>Australia, New Zealand, Japan, Brazil, Mexico, China</code>.
+        Case does not matter. Leave the country field empty to show all countries for the selected filters.
       </p>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
-        <div class="col-sm-3"><label class="form-label">Country (ISO or name, CSV)</label><input id="q_country" class="form-control" value="AUS"></div>
+        <div class="col-sm-3"><label class="form-label">Country (ISO or name, CSV)</label><input id="q_country" class="form-control" value="AUS, NZL, GBR"></div>
         <div class="col-sm-3"><label class="form-label">Vaccine</label><input id="q_vaccine" class="form-control" value="MMR"></div>
         <div class="col-sm-2"><label class="form-label">Year</label><input id="q_year" class="form-control" type="number" value="2024"></div>
         <div class="col-sm-3">
@@ -290,9 +302,9 @@ def page_explorer():
     const Count = document.getElementById('q_count');
     const ErrorBox = document.getElementById('q_error');
 
-    async function runQuery(){{
+    async function runQuery() {{
       const rawCountry = document.getElementById('q_country').value || '';
-      // передаем как есть (в backend уже обрабатываем ISO/имена/CSV)
+
       const payload = {{
         country: rawCountry || null,
         vaccine: (document.getElementById('q_vaccine').value || null),
@@ -366,12 +378,14 @@ def page_trends_ui():
       <p class="text-muted small mb-3">
         Use this page to <strong>compare trends across multiple countries</strong> for a single vaccine.
         Enter one vaccine (e.g. <code>MMR</code>) and a list of countries.
-        Countries should be entered as <strong>3-letter ISO codes</strong> or full names,
-        separated by commas (e.g. <code>AUS, NZL, United States, japan</code>).
+        Countries can be entered as <strong>3-letter ISO codes</strong> or full names,
+        separated by commas (e.g. <code>AUS, NZL, GBR, USA, BRA, MEX, CHN, IND</code> or
+        <code>Australia, New Zealand, United Kingdom, Brazil, Mexico, China, India</code>).
+        Case does not matter.
       </p>
       <form class="row gy-3 align-items-end" onsubmit="return false;">
         <div class="col-sm-4"><label class="form-label">Vaccine</label><input id="t_vaccine" class="form-control" value="MMR"></div>
-        <div class="col-sm-6"><label class="form-label">Countries (ISO or names, CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR"></div>
+        <div class="col-sm-6"><label class="form-label">Countries (ISO or names, CSV)</label><input id="t_countries" class="form-control" value="AUS,NZL,GBR,USA,CAN,JPN"></div>
         <div class="col-sm-2"><button class="btn btn-primary w-100" id="t_run">Load</button></div>
       </form>
     </div>
@@ -384,7 +398,7 @@ def page_trends_ui():
 
     const Cards = document.getElementById('t_cards');
 
-    async function loadTrends(){{
+    async function loadTrends() {{
       const vaccine = document.getElementById('t_vaccine').value || 'MMR';
       const countries = document.getElementById('t_countries').value || 'AUS,NZL,GBR';
       const r = await fetch('/trends?vaccine=' + encodeURIComponent(vaccine) +
@@ -460,16 +474,18 @@ def query_coverage():
                 invalid.append(token)
 
         if invalid:
-            return jsonify({
-                "error": (
-                    "Unknown country code(s)/name(s): "
-                    + ", ".join(invalid)
-                    + ". Use 3-letter ISO codes (e.g. AUS,NZL,GBR) "
-                      "or full names (e.g. Australia)."
-                ),
-                "rows": [],
-                "count": 0,
-            }), 400
+            return jsonify(
+                {
+                    "error": (
+                        "Unknown country code(s)/name(s): "
+                        + ", ".join(invalid)
+                        + ". Use 3-letter ISO codes (e.g. AUS,NZL,GBR) "
+                        "or full names (e.g. Australia)."
+                    ),
+                    "rows": [],
+                    "count": 0,
+                }
+            ), 400
 
         country_param = ",".join(codes)
 
@@ -500,12 +516,17 @@ def compare_json():
         code = NAME_TO_ISO.get(token.lower())
 
     if not code:
-        return jsonify({
-            "error": (
-                f"Unknown country: {raw}. "
-                "Use a 3-letter ISO code (e.g. AUS) or a full country name (e.g. Australia)."
-            )
-        }), 400
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"Unknown country: {raw}. "
+                        "Use a 3-letter ISO code (e.g. AUS) or a full country name (e.g. Australia)."
+                    )
+                }
+            ),
+            400,
+        )
 
     vaccine = request.args.get("vaccine", "MMR") or "MMR"
     try:
@@ -550,14 +571,19 @@ def trends():
             invalid.append(token)
 
     if invalid:
-        return jsonify({
-            "error": (
-                "Unknown country code(s)/name(s): "
-                + ", ".join(invalid)
-                + ". Use 3-letter ISO codes or full names."
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Unknown country code(s)/name(s): "
+                        + ", ".join(invalid)
+                        + ". Use 3-letter ISO codes or full names."
+                    ),
+                    "points": [],
+                }
             ),
-            "points": [],
-        }), 400
+            400,
+        )
 
     return jsonify(get_trends(vaccine, codes)), 200
 
